@@ -1,4 +1,5 @@
 const rateLimit = require('express-rate-limit');
+const config = require('./config.js').config;
 const bodyParser = require('body-parser');
 const speakeasy = require('speakeasy');
 const jwt = require('jsonwebtoken');
@@ -35,7 +36,7 @@ if (fs.existsSync("users.json")) {
 }
 
 const secretKey = crypto.randomBytes(32).toString('hex');
-const encSecret = process.env.ENC_KEY;
+const encSecret = config.encryption_key; 
 const b64Key = crypto.createHash('sha256').update(String(encSecret)).digest('base64');
 const algorithm = 'aes-256-ctr';
 const ENCRYPTION_KEY = Buffer.from(b64Key, 'base64');
