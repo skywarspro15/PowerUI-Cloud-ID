@@ -1,5 +1,5 @@
 Attribute VB_Name = "CloudID"
-Function CreateAccount(username As String, password As String) As String
+Function CreateAccount(username As String, password As String) As Scripting.Dictionary
     Dim req As New ServerXMLHTTP60
     Dim url As String
     Dim payload As String
@@ -20,10 +20,10 @@ Function CreateAccount(username As String, password As String) As String
         DoEvents
     Loop
     
-    CreateAccount = req.responseText
+    Set CreateAccount = JsonConverter.ParseJson(req.responseText)
 End Function
 
-Function GetUserToken(username As String, password As String, Optional twoFA As String = "000000") As String
+Function GetUserToken(username As String, password As String, Optional twoFA As String = "000000") As Scripting.Dictionary
     Dim req As New ServerXMLHTTP60
     Dim url As String
     Dim payload As String
@@ -33,11 +33,11 @@ Function GetUserToken(username As String, password As String, Optional twoFA As 
     url = "https://powerui-cloud-id.skywarspro15.repl.co/login"
     payloadObject.Add "username", username
     payloadObject.Add "password", password
-    payloadObject.Add "code", twoFA
     
     payload = JsonConverter.ConvertToJson(payloadObject)
     
     req.Open "POST", url, True
+    req.setRequestHeader "X-Auth-Code", twoFA
     req.setRequestHeader "Content-Type", "application/json"
     req.send payload
     
@@ -45,15 +45,10 @@ Function GetUserToken(username As String, password As String, Optional twoFA As 
         DoEvents
     Loop
     
-    If req.status = 200 Then
-        Set parsed = JsonConverter.ParseJson(req.responseText)
-        GetUserToken = parsed("token")
-    Else
-        GetUserToken = req.responseText
-    End If
+    Set GetUserToken = JsonConverter.ParseJson(req.responseText)
 End Function
 
-Function SetUserStatus(token As String, status As String) As String
+Function SetUserStatus(token As String, status As String) As Scripting.Dictionary
     Dim req As New ServerXMLHTTP60
     Dim url As String
     Dim payload As String
@@ -74,10 +69,10 @@ Function SetUserStatus(token As String, status As String) As String
         DoEvents
     Loop
     
-    SetUserStatus = req.responseText
+    Set SetUserStatus = JsonConverter.ParseJson(req.responseText)
 End Function
 
-Function Get2faQR(token As String, imgShp As Shape) As String
+Function Get2faQR(token As String, imgShp As Shape)
     Dim req As New ServerXMLHTTP60
     Dim reqStream As Object
     Dim url As String
@@ -112,11 +107,9 @@ Function Get2faQR(token As String, imgShp As Shape) As String
     
     imgShp.Fill.UserPicture "C:\PowerUIDesktop\CloudID\qr.png"
     Kill "C:\PowerUIDesktop\CloudID\qr.png"
-    
-    Exit Function
 End Function
 
-Function Change2faStatus(token As String, code As String, enabled As Boolean) As String
+Function Change2faStatus(token As String, code As String, enabled As Boolean) As Scripting.Dictionary
     Dim req As New ServerXMLHTTP60
     Dim url As String
     Dim payload As String
@@ -125,11 +118,11 @@ Function Change2faStatus(token As String, code As String, enabled As Boolean) As
     url = "https://powerui-cloud-id.skywarspro15.repl.co/change2fa"
     
     payloadObject.Add "enabled", enabled
-    payloadObject.Add "code", code
     
     payload = JsonConverter.ConvertToJson(payloadObject)
     
     req.Open "POST", url, True
+    req.setRequestHeader "X-Auth-Code", code
     req.setRequestHeader "Content-Type", "application/json"
     req.setRequestHeader "Authorization", "Bearer " & token
     req.send payload
@@ -138,11 +131,11 @@ Function Change2faStatus(token As String, code As String, enabled As Boolean) As
         DoEvents
     Loop
     
-    Change2faStatus = req.responseText
+    Set Change2faStatus = JsonConverter.ParseJson(req.responseText)
     
 End Function
 
-Function GetUserInfo(token As String) As String
+Function GetUserInfo(token As String) As Scripting.Dictionary
     Dim req As New ServerXMLHTTP60
     Dim url As String
     
@@ -156,7 +149,32 @@ Function GetUserInfo(token As String) As String
         DoEvents
     Loop
     
-    GetUserInfo = req.responseText
+    Set GetUserInfo = JsonConverter.ParseJson(req.responseText)
 End Function
+
+Function ChangeDisplayName(token As String, newName As String) As Scripting.Dictionary
+    Dim req As New ServerXMLHTTP60
+    Dim url As String
+    Dim payload As String
+    Dim payloadObject As New Scripting.Dictionary
+    
+    url = "https://powerui-cloud-id.skywarspro15.repl.co/displayname"
+    
+    payloadObject.Add "newName", newName
+    
+    payload = JsonConverter.ConvertToJson(payloadObject)
+    
+    req.Open "POST", url, True
+    req.setRequestHeader "Content-Type", "application/json"
+    req.setRequestHeader "Authorization", "Bearer " & token
+    req.send payload
+    
+    Do Until req.readyState = 4
+        DoEvents
+    Loop
+    
+    Set ChangeDisplayName = JsonConverter.ParseJson(req.responseText)
+End Function
+
 
 

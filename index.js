@@ -22,6 +22,7 @@ const limiter = rateLimit({
 
 const jsonParser = bodyParser.json();
 
+app.set('trust-proxy', true);
 app.use(jsonParser);
 app.use(limiter);
 app.use(cors());
@@ -36,7 +37,7 @@ if (fs.existsSync("users.json")) {
 }
 
 const secretKey = crypto.randomBytes(32).toString('hex');
-const encSecret = config.encryption_key; 
+const encSecret = config.encryption_key;
 const b64Key = crypto.createHash('sha256').update(String(encSecret)).digest('base64');
 const algorithm = 'aes-256-ctr';
 const ENCRYPTION_KEY = Buffer.from(b64Key, 'base64');
@@ -64,7 +65,7 @@ function authenticator(req, res, next) {
   const token = req.headers.authorization && req.headers.authorization.split(' ')[1];
 
   if (!token) {
-    return res.sendStatus(401);
+    res.status(401);
     return res.json({ "error": true, "message": "Authentication failed" });
   }
 
@@ -78,6 +79,41 @@ function authenticator(req, res, next) {
     next();
   });
 }
+
+function authenticatorTwoFA(req, res, next) {
+  const token = req.headers.authorization && req.headers.authorization.split(' ')[1];
+  const code = req.headers["x-auth-code"];
+
+  if (!token) {
+    res.status(401);
+    return res.json({ "error": true, "message": "Authentication failed" });
+  }
+
+  jwt.verify(token, secretKey, (err, decoded) => {
+    if (err) {
+      res.status(403);
+      return res.json({ "error": true, "message": "Authentication failed" });
+    }
+    let curUser = decoded.username;
+    let rawEnc = users[curUser]["2fa"];
+    let decKey = decrypt(rawEnc);
+    let enabled = users[curUser]["2faEnabled"];
+    if (enabled) {
+      const verified = speakeasy.totp.verify({
+        secret: decKey,
+        encoding: 'ascii',
+        token: code.trim(),
+      });
+      if (!verified) {
+        res.status(403);
+        return res.json({ "error": true, "message": "2FA code required" });
+      }
+    }
+    req.user = decoded;
+    next();
+  });
+}
+
 
 function generateStatus() {
   let decider = Math.floor(Math.random() * 6);
@@ -101,6 +137,10 @@ function generateStatus() {
 
 app.get("/ping", (req, res) => {
   return res.send("Pong!");
+});
+
+app.get("/twoFATest", authenticatorTwoFA, (req, res) => {
+  res.send({ "error": false, "message": "Authenticated" });
 })
 
 app.get("/getUser", authenticator, (req, res) => {
@@ -119,24 +159,30 @@ app.get("/getQR", authenticator, (req, res) => {
   qrCode.toFileStream(res, qrCodeUrl, { type: 'png' });
 });
 
-app.post("/change2fa", authenticator, (req, res) => {
+app.post("/displayname", authenticator, (req, res) => {
+  let data = req.body;
   let curUser = req.user.username;
+  users[curUser]["public"]["display_name"] = data.newName;
+  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
+  res.json({ "error": false, "message": "Successfully changed display name" });
+});
+
+app.post("/change2fa", authenticatorTwoFA, (req, res) => {
+  let curUser = req.user.username;
+  let code = req.headers["x-auth-code"];
   let rawEnc = users[curUser]["2fa"];
   let decKey = decrypt(rawEnc);
-  const { enabled, code } = req.body;
+  const data = req.body;
   const verified = speakeasy.totp.verify({
     secret: decKey,
     encoding: 'ascii',
     token: code.trim(),
   });
-  let token = speakeasy.totp({
-    secret: decKey,
-    encoding: 'ascii'
-  })
   if (!verified) {
-    return res.json({ "error": true, "message": "Invalid code inputted" });
+    res.status(403);
+    return res.json({ "error": true, "message": "2FA code required" });
   }
-  users[curUser]["2faEnabled"] = enabled;
+  users[curUser]["2faEnabled"] = data.enabled;
   fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
   res.json({ "error": false, "message": "Successfully changed 2FA status" });
 });
@@ -161,9 +207,15 @@ app.post("/signup", (req, res) => {
   }
   let twoFA = speakeasy.generateSecret();
   let encrypted = encrypt(twoFA.base32);
+  let address = bcrypt.hashSync(req.ip, 10);
   bcrypt.hash(password, 10, (err, hash) => {
     let randomizedStatus = generateStatus();
-    users[username] = { "auth": hash, "2fa": encrypted, "2faEnabled": false, "public": { "bio": "There's currently no bio for this profile.", "active": true, "status": randomizedStatus } };
+    users[username] = {
+      "auth": hash, "2fa": encrypted, "2faEnabled": false, "public": {
+        "display_name": username, "username": username, "bio": "There's currently no bio for this profile.", "active": true, "status": randomizedStatus, "addr": address
+      }
+    };
+
     fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
     return res.json({ "error": false, "message": "Successfully created account" });
   });
@@ -187,6 +239,7 @@ app.post('/login', (req, res) => {
       }
       const is2faEnabled = users[username]["2faEnabled"];
       if (is2faEnabled) {
+        let code = req.headers["x-auth-code"];
         let rawEnc = users[username]["2fa"];
         let decKey = decrypt(rawEnc);
         const verified = speakeasy.totp.verify({
