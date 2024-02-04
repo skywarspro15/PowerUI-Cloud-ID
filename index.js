@@ -145,6 +145,17 @@ function generateStatus() {
   }
 }
 
+function generateNumber() {
+  let peerID = '';
+  for (let i = 0; i < 9; i++) {
+    if (i === 3 || i === 6) {
+      peerID += '-';
+    }
+    peerID += Math.floor(Math.random() * 10);
+  }
+  return peerID;
+}
+
 app.get("/ping", (req, res) => {
   return res.send("Pong!");
 });
@@ -172,6 +183,10 @@ app.get("/getQR", authenticator, (req, res) => {
   });
   qrCode.toFileStream(res, qrCodeUrl, { type: "png" });
 });
+
+app.get("/userCount", (req, res) => {
+  return res.json({ "error": false, "count": Object.keys(users).length })
+})
 
 app.post("/displayname", authenticator, (req, res) => {
   let data = req.body;
@@ -229,17 +244,19 @@ app.post("/signup", (req, res) => {
   let address = bcrypt.hashSync(req.ip, 10);
   bcrypt.hash(password, 10, (err, hash) => {
     let randomizedStatus = generateStatus();
+    let userNumber = generateNumber();
     users[username] = {
       auth: hash,
       "2fa": encrypted,
       "2faEnabled": false,
       public: {
-        display_name: username,
-        username: username,
-        bio: "There's currently no bio for this profile.",
-        active: true,
-        status: randomizedStatus,
-        addr: address,
+        "display_name": username,
+        "username": username,
+        "bio": "There's currently no bio for this profile.",
+        "active": true,
+        "status": randomizedStatus,
+        "addr": address,
+        "peerID": userNumber,
       },
     };
 
